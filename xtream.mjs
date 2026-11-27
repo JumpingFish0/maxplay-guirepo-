@@ -1,10 +1,10 @@
-import { fetchJson } from "./http.mjs";
+import { fetchJson, fetchText } from "./http.mjs";
 
 const proxyRefs = new Map();
 
-function makeProxyRef(url) {
+function makeProxyRef(url, allowExternal = false) {
   const token = globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
-  proxyRefs.set(token, { url, expires: Date.now() + 30 * 60 * 1000 });
+  proxyRefs.set(token, { url, allowExternal, expires: Date.now() + 30 * 60 * 1000 });
   if (proxyRefs.size > 5000) {
     for (const [key, value] of proxyRefs) if (value.expires < Date.now()) proxyRefs.delete(key);
   }
@@ -66,6 +66,46 @@ export async function xtreamPlaybackUrl(kind, id, requestedExtension = "") {
   return `/api/xtream/proxy?ref=${makeProxyRef(upstream)}`;
 }
 
+
+export async function xtreamPlaylist(requestUrl) {
+  const cfg = config();
+  if (!cfg) return new Response("Xtream não configurado", { status: 503 });
+  const output = requestUrl.searchParams.get("output") === "m3u8" ? "m3u8" : "ts";
+  const upstreamUrl = new URL(`${cfg.base}/get.php`);
+  upstreamUrl.searchParams.set("username", cfg.username);
+  upstreamUrl.searchParams.set("password", cfg.password);
+  upstreamUrl.searchParams.set("type", "m3u_plus");
+  upstreamUrl.searchParams.set("output", output);
+  try {
+    const upstream = await fetchText(upstreamUrl.toString(), { timeoutMs: 30000 });
+    if (!upstream.ok || !upstream.text.trimStart().startsWith("#EXTM3U")) {
+      return new Response("O fornecedor não retornou uma playlist M3U válida", { status: 502 });
+    }
+    const baseUrl = upstream.url || upstreamUrl.toString();
+    const rewritten = upstream.text.split(/\\r?\\n/).map((line) => {
+      const value = line.trim();
+      if (!value || value.startsWith("#")) return line;
+      try {
+        const target = new URL(value, baseUrl);
+        if (!["http:", "https:"].includes(target.protocol)) return "";
+        return `/api/xtream/proxy?ref=${makeProxyRef(target.toString(), true)}`;
+      } catch {
+        return line;
+      }
+    }).join("\\n");
+    return new Response(rewritten, {
+      headers: {
+        "Content-Type": "audio/x-mpegurl; charset=utf-8",
+        "Content-Disposition": 'inline; filename="maxplay-unificada.m3u"',
+        "Cache-Control": "private, no-store",
+        "Access-Control-Allow-Origin": "*"
+      }
+    });
+  } catch {
+    return new Response("Não foi possível gerar a playlist do Xtream", { status: 502 });
+  }
+}
+
 export async function proxyXtream(requestUrl, requestHeaders = new Headers()) {
   const cfg = config();
   if (!cfg) return new Response("Xtream não configurado", { status: 503 });
@@ -78,7 +118,7 @@ export async function proxyXtream(requestUrl, requestHeaders = new Headers()) {
   const raw = stored.url;
   let target;
   try { target = new URL(raw); } catch { return new Response("URL inválida", { status: 400 }); }
-  if (target.host !== cfg.host || !["http:", "https:"].includes(target.protocol)) {
+  if ((target.host !== cfg.host && !stored.allowExternal) || !["http:", "https:"].includes(target.protocol)) {
     return new Response("Destino não permitido", { status: 403 });
   }
   try {
@@ -98,7 +138,7 @@ export async function proxyXtream(requestUrl, requestHeaders = new Headers()) {
           return line.replace(/URI="([^"]+)"/g, (_, uri) => {
             try {
               const abs = new URL(uri, base).toString();
-              return `URI="/api/xtream/proxy?ref=${makeProxyRef(abs)}"`;
+              return `URI="/api/xtream/proxy?ref=${makeProxyRef(abs, stored.allowExternal)}"`;
             } catch { return `URI="${uri}"`; }
           });
         }
