@@ -1,6 +1,18 @@
 import { fetchJson, fetchText } from "./http.mjs";
+import { SharedStreamRelay } from "./shared-relay.mjs";
 
 const proxyRefs = new Map();
+const relayRefs = new Map();
+const sharedRelay = new SharedStreamRelay({ maxViewers: 5 });
+
+function makeRelayRef(kind, id) {
+  const token = globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
+  relayRefs.set(token, { kind, id: String(id), expires: Date.now() + 30 * 60 * 1000 });
+  if (relayRefs.size > 5000) {
+    for (const [key, value] of relayRefs) if (value.expires < Date.now()) relayRefs.delete(key);
+  }
+  return token;
+}
 
 function makeProxyRef(url, allowExternal = false) {
   const token = globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
@@ -57,6 +69,7 @@ export async function xtreamPlaybackUrl(kind, id, requestedExtension = "") {
   };
   const item = types[kind];
   if (!item || !/^\d+$/.test(String(id))) return null;
+  if (kind === "live") return `/api/xtream/relay?ref=${makeRelayRef(kind, id)}`;
   const configuredExt = kind === "live" ? (process.env.XTREAM_LIVE_EXTENSION || "ts") :
     (kind === "movie" ? (process.env.XTREAM_VOD_EXTENSION || "mp4") : "mp4");
   const ext = requestedExtension || configuredExt;
@@ -66,6 +79,21 @@ export async function xtreamPlaybackUrl(kind, id, requestedExtension = "") {
   return `/api/xtream/proxy?ref=${makeProxyRef(upstream)}`;
 }
 
+
+
+export function xtreamRelay(requestUrl) {
+  const cfg = config();
+  if (!cfg) return new Response("Xtream não configurado", { status: 503 });
+  const ref = requestUrl.searchParams.get("ref") || "";
+  const stored = relayRefs.get(ref);
+  if (!stored || stored.expires < Date.now() || stored.kind !== "live" || !/^\\d+$/.test(stored.id)) {
+    relayRefs.delete(ref);
+    return new Response("Referência de relay expirada ou inválida", { status: 404 });
+  }
+  const ext = String(process.env.XTREAM_LIVE_EXTENSION || "ts").replace(/[^a-z0-9]/gi, "").slice(0, 5) || "ts";
+  const upstreamUrl = `${cfg.base}/live/${encodeURIComponent(cfg.username)}/${encodeURIComponent(cfg.password)}/${stored.id}.${ext}`;
+  return sharedRelay.open(`live:${stored.id}`, upstreamUrl);
+}
 
 export async function xtreamPlaylist(requestUrl) {
   const cfg = config();
