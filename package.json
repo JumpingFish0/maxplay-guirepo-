@@ -1,10 +1,11 @@
 {
   "name": "guirepo-tv-addon",
-  "version": "1.0.0",
-  "description": "Stremio / NuvioTV Addon unificado de TV ao Vivo e Esportes BR (BRFlix TV, EmbedTV, TV a Cabo e Rei dos Embeds)",
+  "version": "1.1.0",
+  "description": "Backend Node.js do Max Play com catálogo Xtream Codes privado e compatibilidade Stremio/NuvioTV",
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
-    "test": "node smoke.mjs"
+    "test": "node --test xtream.test.mjs",
+    "test:providers": "node smoke.mjs"
   }
 }
