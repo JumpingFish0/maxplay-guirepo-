@@ -48,7 +48,7 @@ test("playback URL does not expose Xtream credentials", async () => {
   const res = await handleRequest(new Request("http://localhost/api/xtream/play/live/123"));
   const body = await res.text();
   assert.equal(res.status, 200);
-  assert.ok(body.includes("/api/xtream/proxy?ref="));
+  assert.ok(body.includes("/api/xtream/relay?ref="));
   assert.ok(!body.includes("private-user"));
   assert.ok(!body.includes("private-password"));
 });
