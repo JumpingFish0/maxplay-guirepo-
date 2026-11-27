@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
-    "test": "node --test xtream.test.mjs",
+    "test": "node --test xtream.test.mjs shared-relay.test.mjs",
     "test:providers": "node smoke.mjs"
   }
 }
