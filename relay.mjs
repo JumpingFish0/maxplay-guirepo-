@@ -95,15 +95,15 @@ export async function xtreamRelay(requestUrl, kind, id) {
     return new Response("O provedor recusou a transmissão de origem", { status: 502 });
   }
 
+  let subscriber;
   const body = new ReadableStream({
     start(controller) {
+      subscriber = controller;
       entry.subscribers.add(controller);
       startPump(entry, key);
     },
     cancel() {
-      for (const controller of entry.subscribers) {
-        if (controller === this) entry.subscribers.delete(controller);
-      }
+      if (subscriber) entry.subscribers.delete(subscriber);
       // The pump also stops and aborts the source when no consumers remain.
       if (entry.subscribers.size === 0 && relays.get(key) === entry) {
         entry.abort.abort();
