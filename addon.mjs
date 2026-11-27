@@ -8,6 +8,7 @@ import {
 } from "./aggregator.mjs";
 import { USER_AGENT, fetchText, originOf, stripDiacritics } from "./http.mjs";
 import { proxyXtream, xtreamApi, xtreamConfigured, xtreamPlaybackUrl, xtreamSafeItem, xtreamPlaylist } from "./xtream.mjs";
+import { xtreamRelay } from "./relay.mjs";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -313,6 +314,9 @@ export async function handleRequest(request) {
     }
     if (section === "proxy") return proxyXtream(reqUrl, request.headers);
     if (section === "playlist") return xtreamPlaylist(reqUrl);
+    if (section === "relay" && parts[3] === "live" && parts[4]) {
+      return xtreamRelay(reqUrl, "live", parts[4]);
+    }
     if (section === "play" && parts.length === 5) {
       const kind = parts[3];
       const id = decodeURIComponent(parts[4]);
