@@ -46,7 +46,7 @@ export async function xtreamApi(params = {}) {
   }
 }
 
-export async function xtreamPlaybackUrl(kind, id) {
+export async function xtreamPlaybackUrl(kind, id, requestedExtension = "") {
   const cfg = config();
   if (!cfg) return null;
   const types = {
@@ -57,15 +57,16 @@ export async function xtreamPlaybackUrl(kind, id) {
   };
   const item = types[kind];
   if (!item || !/^\d+$/.test(String(id))) return null;
-  const ext = kind === "live" ? (process.env.XTREAM_LIVE_EXTENSION || "m3u8") :
+  const configuredExt = kind === "live" ? (process.env.XTREAM_LIVE_EXTENSION || "ts") :
     (kind === "movie" ? (process.env.XTREAM_VOD_EXTENSION || "mp4") : "mp4");
+  const ext = requestedExtension || configuredExt;
   const safeExt = /^[a-z0-9]{2,5}$/i.test(ext) ? ext : item[1];
   const path = kind === "live" ? "live" : kind === "movie" ? "movie" : "series";
   const upstream = `${cfg.base}/${path}/${encodeURIComponent(cfg.username)}/${encodeURIComponent(cfg.password)}/${id}.${safeExt}`;
   return `/api/xtream/proxy?ref=${makeProxyRef(upstream)}`;
 }
 
-export async function proxyXtream(requestUrl) {
+export async function proxyXtream(requestUrl, requestHeaders = new Headers()) {
   const cfg = config();
   if (!cfg) return new Response("Xtream não configurado", { status: 503 });
   const ref = requestUrl.searchParams.get("ref") || "";
@@ -82,7 +83,7 @@ export async function proxyXtream(requestUrl) {
   }
   try {
     const upstream = await fetch(target, {
-      headers: { "User-Agent": "MaxPlay/1.0", Accept: "*/*" },
+      headers: { "User-Agent": "MaxPlay/1.0", Accept: "*/*", ...(requestHeaders.get("range") ? { Range: requestHeaders.get("range") } : {}) },
       redirect: "follow",
       signal: AbortSignal.timeout(20000)
     });
@@ -112,11 +113,17 @@ export async function proxyXtream(requestUrl) {
         "Access-Control-Allow-Origin": "*"
       }});
     }
-    return new Response(upstream.body, { status: 200, headers: {
+    const responseHeaders = {
       "Content-Type": contentType || "application/octet-stream",
       "Cache-Control": "no-store",
-      "Access-Control-Allow-Origin": "*"
-    }});
+      "Access-Control-Allow-Origin": "*",
+      "Accept-Ranges": upstream.headers.get("accept-ranges") || "bytes"
+    };
+    for (const header of ["content-length", "content-range"]) {
+      const value = upstream.headers.get(header);
+      if (value) responseHeaders[header] = value;
+    }
+    return new Response(upstream.body, { status: upstream.status, headers: responseHeaders });
   } catch {
     return new Response("Não foi possível obter a mídia", { status: 502 });
   }
