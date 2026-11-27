@@ -86,7 +86,7 @@ export function xtreamRelay(requestUrl) {
   if (!cfg) return new Response("Xtream não configurado", { status: 503 });
   const ref = requestUrl.searchParams.get("ref") || "";
   const stored = relayRefs.get(ref);
-  if (!stored || stored.expires < Date.now() || stored.kind !== "live" || !/^\\d+$/.test(stored.id)) {
+  if (!stored || stored.expires < Date.now() || stored.kind !== "live" || !/^\d+$/.test(stored.id)) {
     relayRefs.delete(ref);
     return new Response("Referência de relay expirada ou inválida", { status: 404 });
   }
