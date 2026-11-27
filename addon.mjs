@@ -7,6 +7,7 @@ import {
   resolveStreamsById
 } from "./aggregator.mjs";
 import { USER_AGENT, fetchText, originOf, stripDiacritics } from "./http.mjs";
+import { proxyXtream, xtreamApi, xtreamConfigured, xtreamPlaybackUrl, xtreamSafeItem } from "./xtream.mjs";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -299,6 +300,72 @@ export async function handleRequest(request) {
       200,
       10
     );
+  }
+
+  // Xtream Codes REST API. Credentials are read only from private process.env.
+  if (path.startsWith("/api/xtream/")) {
+    const parts = path.split("/").filter(Boolean);
+    const section = parts[2] || "";
+    if (section === "status") {
+      return new Response(JSON.stringify({ configured: xtreamConfigured() }), {
+        headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", ...CORS_HEADERS }
+      });
+    }
+    if (section === "proxy") return proxyXtream(reqUrl);
+    if (section === "play" && parts.length === 5) {
+      const kind = parts[3];
+      const id = decodeURIComponent(parts[4]);
+      const url = await xtreamPlaybackUrl(kind, id);
+      return new Response(JSON.stringify(url ? { url } : { error: "Tipo, ID ou configuração inválida" }), {
+        status: url ? 200 : 400,
+        headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", ...CORS_HEADERS }
+      });
+    }
+    const actions = {
+      "live/categories": "get_live_categories",
+      "live/streams": "get_live_streams",
+      "vod/categories": "get_vod_categories",
+      "vod/streams": "get_vod_streams",
+      "series/categories": "get_series_categories",
+      "series/list": "get_series"
+    };
+    const key = `${parts[2]}/${parts[3] || ""}`;
+    if (actions[key]) {
+      const params = { action: actions[key] };
+      const categoryId = reqUrl.searchParams.get("category_id");
+      if (categoryId && /^\d+$/.test(categoryId)) params.category_id = categoryId;
+      const result = await xtreamApi(params);
+      if (result.error) return new Response(JSON.stringify({ error: result.error }), {
+        status: result.status, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", ...CORS_HEADERS }
+      });
+      const kind = key.startsWith("live/") ? "channel" : key.startsWith("vod/") ? "movie" : "series";
+      const isCategories = key.endsWith("/categories");
+      let items = Array.isArray(result.data) ? (isCategories
+        ? result.data.map(x => ({ id: String(x.category_id ?? ""), name: String(x.category_name || "Sem categoria"), parentId: x.parent_id ?? null }))
+        : result.data.map(x => xtreamSafeItem(x, kind))) : [];
+      const search = stripDiacritics((reqUrl.searchParams.get("q") || reqUrl.searchParams.get("search") || "").trim().toLowerCase());
+      if (search && !isCategories) items = items.filter(x => stripDiacritics(`${x.name} ${x.plot || ""}`.toLowerCase()).includes(search));
+      return new Response(JSON.stringify({ items }), {
+        headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "private, no-store", ...CORS_HEADERS }
+      });
+    }
+    if (section === "series" && parts[3] === "episode" && parts[4] && /^\d+$/.test(parts[4])) {
+      const url = await xtreamPlaybackUrl("episode", parts[4]);
+      return new Response(JSON.stringify(url ? { url } : { error: "Episódio ou configuração inválida" }), {
+        status: url ? 200 : 400,
+        headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", ...CORS_HEADERS }
+      });
+    }
+    if (section === "series" && parts[3] === "info" && parts[4] && /^\d+$/.test(parts[4])) {
+      const result = await xtreamApi({ action: "get_series_info", series_id: parts[4] });
+      if (result.error) return new Response(JSON.stringify({ error: result.error }), {
+        status: result.status, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", ...CORS_HEADERS }
+      });
+      return new Response(JSON.stringify(result.data), {
+        headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "private, no-store", ...CORS_HEADERS }
+      });
+    }
+    return jsonResponse({ error: "Rota Xtream Codes não encontrada" }, 404, 0);
   }
 
   if (path === "/manifest.json") {

@@ -34,3 +34,29 @@ npx wrangler deploy
 ```
 
 Depois, adicione `https://<seu-worker>.workers.dev/manifest.json` na aba **Addons** do NuvioTV.
+
+
+## Integração Xtream Codes (Max Play)
+
+A integração Xtream é opcional e fica desativada até que as três variáveis privadas sejam configuradas no Render. Não coloque credenciais em arquivos versionados.
+
+Configure no serviço Render `maxplay-guirepo`:
+
+- `XTREAM_BASE_URL` — URL do servidor do provedor, incluindo protocolo e porta se necessário.
+- `XTREAM_USERNAME` — usuário fornecido pelo provedor.
+- `XTREAM_PASSWORD` — senha fornecida pelo provedor.
+
+Rotas do catálogo (JSON):
+
+- `GET /api/xtream/status` — informa somente se a integração está configurada.
+- `GET /api/xtream/live/categories` e `/api/xtream/live/streams`
+- `GET /api/xtream/vod/categories` e `/api/xtream/vod/streams`
+- `GET /api/xtream/series/categories` e `/api/xtream/series/list`
+- Listagens aceitam `?category_id=ID` e `?q=termo` (ou `?search=termo`).
+- `GET /api/xtream/series/info/ID` — informações da série, temporadas e episódios fornecidos pelo provedor.
+- `GET /api/xtream/play/live/ID`, `/movie/ID` e `/episode/ID` — URL local de reprodução.
+- `GET /api/xtream/proxy?ref=...` — proxy de mídia/HLS com referência temporária opaca.
+
+A senha nunca é devolvida pela API de status, catálogo ou reprodução. O proxy mantém as URLs do provedor no servidor e reescreve playlists HLS para usar o próprio backend. A reprodução automática e a interface visual dependem do aplicativo cliente que consome estas rotas; este repositório é um backend/addon, não o código da interface nativa do Max Play.
+
+Teste determinístico da integração: `npm test`. O teste externo dos provedores preexistentes pode ser executado separadamente com `npm run test:providers` e depende da disponibilidade dos sites terceiros.
