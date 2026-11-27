@@ -311,11 +311,11 @@ export async function handleRequest(request) {
         headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", ...CORS_HEADERS }
       });
     }
-    if (section === "proxy") return proxyXtream(reqUrl);
+    if (section === "proxy") return proxyXtream(reqUrl, request.headers);
     if (section === "play" && parts.length === 5) {
       const kind = parts[3];
       const id = decodeURIComponent(parts[4]);
-      const url = await xtreamPlaybackUrl(kind, id);
+      const url = await xtreamPlaybackUrl(kind, id, reqUrl.searchParams.get("extension") || "");
       return new Response(JSON.stringify(url ? { url } : { error: "Tipo, ID ou configuração inválida" }), {
         status: url ? 200 : 400,
         headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", ...CORS_HEADERS }
