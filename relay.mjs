@@ -65,6 +65,12 @@ export async function xtreamRelay(requestUrl, kind, id) {
 
   const key = `${kind}:${id}`;
   let entry = relays.get(key);
+  if (!entry && relays.size >= 1) {
+    return new Response("O relay já está ocupado por outra transmissão. Encerre-a antes de iniciar outra.", { status: 429 });
+  }
+  if (entry && entry.subscribers.size >= 2) {
+    return new Response("Este relay já está atendendo dois aparelhos.", { status: 429 });
+  }
   if (!entry) {
     const ext = /^[a-z0-9]{2,5}$/i.test(process.env.XTREAM_LIVE_EXTENSION || "ts")
       ? (process.env.XTREAM_LIVE_EXTENSION || "ts") : "ts";
