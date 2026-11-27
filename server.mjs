@@ -1,4 +1,5 @@
 import http from "node:http";
+import { Readable } from "node:stream";
 import { handleRequest } from "./addon.mjs";
 
 const PORT = Number(process.env.PORT || 7000);
@@ -18,13 +19,27 @@ const server = http.createServer(async (req, res) => {
       outHeaders[k] = v;
     });
     res.writeHead(webRes.status, outHeaders);
-    if (req.method === "HEAD") {
+    if (req.method === "HEAD" || !webRes.body) {
       res.end();
       return;
     }
-    const buf = Buffer.from(await webRes.arrayBuffer());
-    res.end(buf);
+
+    // Preserve streaming responses (HLS/TS/MP4) instead of buffering the
+    // entire media response in memory before sending it to the viewer.
+    const body = Readable.fromWeb(webRes.body);
+    body.on("error", (err) => {
+      if (res.headersSent) res.destroy(err);
+      else {
+        res.writeHead(502, { "Content-Type": "text/plain; charset=utf-8" });
+        res.end("Falha ao encaminhar a transmissão");
+      }
+    });
+    body.pipe(res);
   } catch (err) {
+    if (res.headersSent) {
+      res.destroy(err);
+      return;
+    }
     res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
     res.end(JSON.stringify({ error: err?.message || "Internal error" }));
   }
